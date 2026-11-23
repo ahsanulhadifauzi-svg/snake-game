@@ -1,0 +1,236 @@
+import pygame
+import random
+import os
+import sys
+
+pygame.init()
+
+WIDTH = 600
+HEIGHT = 400
+BLOCK = 20
+
+WHITE = (255, 255, 255)
+GREEN = (0, 255, 0)
+RED = (255, 0, 0)
+BLACK = (0, 0, 0)
+
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Snake Game")
+
+clock = pygame.time.Clock()
+font = pygame.font.SysFont(None, 35)
+
+# ================= LEADERBOARD =================
+# File skor disimpan di folder yang sama dengan program ini,
+# jadi tetap ketemu walaupun program dijalankan dari folder lain.
+FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "leaderboard.txt")
+
+
+def load_scores():
+    if not os.path.exists(FILE):
+        return []
+
+    scores = []
+    with open(FILE, "r") as f:
+        for line in f.readlines():
+            line = line.strip()
+            if line.isdigit():  # lewati baris kosong / rusak biar tidak crash
+                scores.append(int(line))
+
+    return sorted(scores, reverse=True)
+
+
+def save_score(score):
+    if score <= 0:  # skor 0 tidak perlu masuk leaderboard
+        return
+    scores = load_scores()
+    scores.append(score)
+    scores = sorted(scores, reverse=True)[:5]  # top 5
+    with open(FILE, "w") as f:
+        for s in scores:
+            f.write(str(s) + "\n")
+
+
+# ================= UTIL =================
+def quit_game():
+    pygame.quit()
+    sys.exit()
+
+
+def draw_text(text, x, y):
+    img = font.render(text, True, WHITE)
+    screen.blit(img, (x, y))
+
+
+def generate_food(snake):
+    while True:
+        x = random.randrange(0, WIDTH, BLOCK)
+        y = random.randrange(0, HEIGHT, BLOCK)
+        if (x, y) not in snake:
+            return (x, y)
+
+
+# ================= MENU =================
+# Mengembalikan pilihan pemain: "play" atau "leaderboard".
+# Pilihan Exit langsung menutup program.
+def menu():
+    while True:
+        screen.fill(BLACK)
+        draw_text("SNAKE GAME", WIDTH // 2 - 100, 50)
+        draw_text("1. Start Game", WIDTH // 2 - 100, 120)
+        draw_text("2. Leaderboard", WIDTH // 2 - 100, 160)
+        draw_text("3. Exit", WIDTH // 2 - 100, 200)
+
+        pygame.display.update()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                quit_game()
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_1:
+                    return "play"
+                elif event.key == pygame.K_2:
+                    return "leaderboard"
+                elif event.key == pygame.K_3:
+                    quit_game()
+
+
+# ================= LEADERBOARD VIEW =================
+def show_leaderboard():
+    scores = load_scores()
+
+    while True:
+        screen.fill(BLACK)
+        draw_text("LEADERBOARD", WIDTH // 2 - 120, 50)
+
+        if not scores:
+            draw_text("No scores yet", WIDTH // 2 - 100, 150)
+        else:
+            for i, s in enumerate(scores):
+                draw_text(f"{i + 1}. {s}", WIDTH // 2 - 50, 120 + i * 30)
+
+        draw_text("Press B to go back", WIDTH // 2 - 130, 320)
+
+        pygame.display.update()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                quit_game()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_b:
+                    return
+
+
+# ================= GAME OVER =================
+# Mengembalikan "restart" (tekan R) atau "menu" (tekan M).
+def game_over(score):
+    save_score(score)
+
+    while True:
+        screen.fill(BLACK)
+        draw_text("GAME OVER", WIDTH // 2 - 90, 120)
+        draw_text(f"Score: {score}", WIDTH // 2 - 70, 160)
+        draw_text("R = Restart", WIDTH // 2 - 70, 220)
+        draw_text("M = Menu", WIDTH // 2 - 70, 260)
+
+        pygame.display.update()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                quit_game()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_r:
+                    return "restart"
+                if event.key == pygame.K_m:
+                    return "menu"
+
+
+# ================= MAIN GAME =================
+# Menjalankan satu permainan, mengembalikan skor akhir.
+def main():
+    snake = [(100, 100), (80, 100), (60, 100)]
+    dx = BLOCK
+    dy = 0
+
+    food = generate_food(snake)
+    score = 0
+    running = True
+
+    while running:
+        screen.fill(BLACK)
+
+        # Arah baru dicek terhadap arah saat ini, lalu diterapkan sekali per langkah.
+        # Jadi menekan dua tombol cepat (misal atas lalu kiri) tidak bisa
+        # membuat ular berbalik arah dan menabrak badannya sendiri.
+        new_dx, new_dy = dx, dy
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                quit_game()
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_UP and dy != BLOCK:
+                    new_dx, new_dy = 0, -BLOCK
+                elif event.key == pygame.K_DOWN and dy != -BLOCK:
+                    new_dx, new_dy = 0, BLOCK
+                elif event.key == pygame.K_LEFT and dx != BLOCK:
+                    new_dx, new_dy = -BLOCK, 0
+                elif event.key == pygame.K_RIGHT and dx != -BLOCK:
+                    new_dx, new_dy = BLOCK, 0
+
+        dx, dy = new_dx, new_dy
+
+        new_head = (snake[0][0] + dx, snake[0][1] + dy)
+        makan = new_head == food
+
+        # Tabrak dinding
+        if (new_head[0] < 0 or new_head[0] >= WIDTH or
+                new_head[1] < 0 or new_head[1] >= HEIGHT):
+            break
+
+        # Tabrak badan sendiri. Kalau tidak makan, ekor akan bergeser,
+        # jadi kotak ekor boleh dimasuki kepala.
+        badan = snake if makan else snake[:-1]
+        if new_head in badan:
+            break
+
+        snake.insert(0, new_head)
+
+        if makan:
+            score += 1
+            food = generate_food(snake)
+        else:
+            snake.pop()
+
+        pygame.draw.rect(screen, RED, (food[0], food[1], BLOCK, BLOCK))
+
+        for part in snake:
+            pygame.draw.rect(screen, GREEN, (part[0], part[1], BLOCK, BLOCK))
+
+        draw_text("Score: " + str(score), 10, 10)
+
+        pygame.display.update()
+        clock.tick(min(7 + score, 25))  # makin tinggi skor makin cepat, maksimal 25
+
+    return score
+
+
+# ================= START =================
+# Alur program dipegang di sini (bukan saling memanggil antar fungsi),
+# jadi tidak ada rekursi dan kembali ke menu selalu bersih.
+def start():
+    while True:
+        pilihan = menu()
+
+        if pilihan == "leaderboard":
+            show_leaderboard()
+        else:
+            while True:
+                skor = main()
+                if game_over(skor) == "menu":
+                    break
+
+
+if __name__ == "__main__":
+    start()
